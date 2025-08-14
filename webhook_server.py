@@ -50,7 +50,8 @@ class ChartInkWebhookProcessor:
         Parse stocks string from ChartInk webhook
         
         Args:
-            stocks_string: "SEPOWER@3.75,ASTEC@541.8,EDUCOMP@2.1"
+            stocks_string: "SEPOWER@3.75,ASTEC@541.8,EDUCOMP@2.1" (old format)
+            OR just "SEPOWER,ASTEC,EDUCOMP" (new ChartInk format)
             
         Returns:
             Tuple of (stock_symbols, trigger_prices)
@@ -59,32 +60,38 @@ class ChartInkWebhookProcessor:
             return [], []
             
         try:
-            stocks_data = stocks_string.split(',')
-            stocks = []
-            prices = []
-            
-            for item in stocks_data:
-                item = item.strip()
-                if '@' not in item:
-                    logger.warning(f"Invalid stock format: {item}")
-                    continue
-                    
-                parts = item.split('@')
-                if len(parts) != 2:
-                    logger.warning(f"Invalid stock format: {item}")
-                    continue
-                    
-                symbol = parts[0].strip()
-                try:
-                    price = float(parts[1].strip())
-                    stocks.append(symbol)
-                    prices.append(price)
-                except ValueError:
-                    logger.warning(f"Invalid price format: {parts[1]}")
-                    continue
-                    
-            return stocks, prices
-            
+            # Check if it's the old format with @ symbols
+            if '@' in stocks_string:
+                stocks_data = stocks_string.split(',')
+                stocks = []
+                prices = []
+                
+                for item in stocks_data:
+                    item = item.strip()
+                    if '@' not in item:
+                        logger.warning(f"Invalid stock format: {item}")
+                        continue
+                        
+                    parts = item.split('@')
+                    if len(parts) != 2:
+                        logger.warning(f"Invalid stock format: {item}")
+                        continue
+                        
+                    symbol = parts[0].strip()
+                    try:
+                        price = float(parts[1].strip())
+                        stocks.append(symbol)
+                        prices.append(price)
+                    except ValueError:
+                        logger.warning(f"Invalid price format: {parts[1]}")
+                        continue
+                        
+                return stocks, prices
+            else:
+                # New ChartInk format: just comma-separated stock symbols
+                stocks = [stock.strip() for stock in stocks_string.split(',') if stock.strip()]
+                return stocks, []  # Prices will be handled separately
+                
         except Exception as e:
             logger.error(f"Error parsing stocks string: {e}")
             return [], []
@@ -136,14 +143,33 @@ class ChartInkWebhookProcessor:
             if not is_valid:
                 return {'success': False, 'error': message}
             
-            # Parse stocks and prices
-            stocks, prices = cls.parse_stocks_string(payload['stocks'])
-            
-            if not stocks:
-                return {'success': False, 'error': 'No valid stocks found in payload'}
-            
-            if len(stocks) != len(prices):
-                return {'success': False, 'error': 'Mismatch between stocks and prices count'}
+            # Handle ChartInk's actual format with separate stocks and trigger_prices fields
+            if 'trigger_prices' in payload and isinstance(payload['trigger_prices'], str):
+                # New ChartInk format: separate stocks and trigger_prices strings
+                stocks_str = payload['stocks']
+                prices_str = payload['trigger_prices']
+                
+                # Parse stocks (comma-separated)
+                stocks = [stock.strip() for stock in stocks_str.split(',') if stock.strip()]
+                
+                # Parse prices (comma-separated)
+                try:
+                    prices = [float(price.strip()) for price in prices_str.split(',') if price.strip()]
+                except ValueError as e:
+                    return {'success': False, 'error': f'Invalid price format: {e}'}
+                
+                if len(stocks) != len(prices):
+                    return {'success': False, 'error': f'Mismatch: {len(stocks)} stocks vs {len(prices)} prices'}
+                    
+            else:
+                # Old format: "SYMBOL@PRICE,SYMBOL@PRICE"
+                stocks, prices = cls.parse_stocks_string(payload['stocks'])
+                
+                if not stocks:
+                    return {'success': False, 'error': 'No valid stocks found in payload'}
+                
+                if len(stocks) != len(prices):
+                    return {'success': False, 'error': 'Mismatch between stocks and prices count'}
             
             # Calculate metrics
             total_stocks = len(stocks)
