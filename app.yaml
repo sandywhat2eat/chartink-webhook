@@ -1,0 +1,23 @@
+# Digital Ocean App Platform Configuration
+name: chartink-webhook
+services:
+- name: webhook-server
+  source_dir: /
+  github:
+    repo: your-username/chartink-webhook
+    branch: main
+  run_command: gunicorn --bind 0.0.0.0:$PORT webhook_server:app
+  environment_slug: python
+  instance_count: 1
+  instance_size_slug: basic-xxs
+  http_port: 8080
+  envs:
+  - key: SUPABASE_URL
+    scope: RUN_TIME
+    type: SECRET
+  - key: SUPABASE_SERVICE_ROLE_KEY
+    scope: RUN_TIME
+    type: SECRET
+  - key: PORT
+    scope: RUN_TIME
+    value: "8080"
