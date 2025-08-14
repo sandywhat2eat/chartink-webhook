@@ -16,13 +16,15 @@ from dotenv import load_dotenv
 # Load environment variables
 load_dotenv()
 
-# Configure logging
+# Configure logging - use environment-appropriate log file path
+import tempfile
+log_file = os.getenv('LOG_FILE', os.path.join(tempfile.gettempdir(), 'webhook.log'))
+
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     handlers=[
-        logging.FileHandler('/root/chartink/webhook.log'),
-        logging.StreamHandler()
+        logging.StreamHandler()  # Only use console logging for Digital Ocean
     ]
 )
 logger = logging.getLogger(__name__)
