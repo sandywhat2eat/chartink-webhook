@@ -12,9 +12,17 @@ from typing import Dict, List, Optional, Tuple
 from flask import Flask, request, jsonify
 from supabase import create_client, Client
 from dotenv import load_dotenv
+import requests as http_requests
 
 # Load environment variables
-load_dotenv()
+load_dotenv('/root/.env')
+
+# Dhan Token Renewal Config
+DHAN_API_KEY = "c9574090"
+DHAN_API_SECRET = "942a4b05-0f48-4f20-82d5-87caa4b21b75"
+DHAN_AUTH_URL = "https://auth.dhan.co"
+DISCORD_BOT_TOKEN = os.getenv('DISCORD_BOT_TOKEN', 'MTQzMDA3MDQxNDEwNDg1NDU4MA.GP6Ghq.AkjpzSdlrYS5uW_c8IQ_f1K2bZfwFbwZy_8Wz0')
+DISCORD_CHANNEL_ID = "1455426520066822194"
 
 # Configure logging - use environment-appropriate log file path
 import tempfile
@@ -313,3 +321,83 @@ if __name__ == '__main__':
         debug=False,
         threaded=True
     )
+
+# ============================================
+# TradingView Webhook → Discord Relay
+# ============================================
+DISCORD_WEBHOOK_URLS = {
+    "default": "https://discord.com/api/webhooks/1434609403457441873/-RXhIOaWeb4W3TtjtkxpTX0WnE2DFxTIaguBFaXUAL1WpsUsccnJPyyjwt4GSykArHUL",
+    "alerts": "https://discord.com/api/webhooks/1489447362148569329/55s8LhzXtMJX0ejAcM_JqmWnZ8oCjoIhe5i8yXWAg6F0_3XzyjNBIaF3mBoGhYI_CoNY"
+}
+
+@app.route("/webhook/tradingview", methods=["POST"])
+@app.route("/webhook/tradingview/<channel>", methods=["POST"])
+def tradingview_webhook(channel="default"):
+    """Receive TradingView alert and forward to Discord"""
+    try:
+        body = request.get_data(as_text=True).strip()
+        logger.info(f"TradingView webhook received: {body[:200]}")
+
+        if not body:
+            return jsonify({"error": "Empty body"}), 400
+
+        # Try parsing as JSON first (our Pine Script sends Discord-formatted JSON)
+        try:
+            payload = json.loads(body)
+            if "content" in payload:
+                discord_payload = payload
+            else:
+                discord_payload = {"content": json.dumps(payload, indent=2)}
+        except json.JSONDecodeError:
+            discord_payload = {"content": body}
+
+        webhook_url = DISCORD_WEBHOOK_URLS.get(channel, DISCORD_WEBHOOK_URLS["default"])
+        resp = http_requests.post(webhook_url, json=discord_payload, timeout=5)
+
+        logger.info(f"Discord response: {resp.status_code}")
+        return jsonify({"success": True, "discord_status": resp.status_code}), 200
+
+    except Exception as e:
+        logger.error(f"TradingView webhook error: {e}")
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/webhook/tradingview/test", methods=["GET"])
+def tradingview_test():
+    """Test endpoint"""
+    return jsonify({"status": "ready", "endpoints": ["/webhook/tradingview", "/webhook/tradingview/alerts", "/webhook/tradingview/test"]}), 200
+
+# ============================================
+# TradingView Webhook to Discord Relay
+# ============================================
+DISCORD_TV_WEBHOOK = os.getenv('DISCORD_TV_WEBHOOK', '')
+DISCORD_TV_WEBHOOK_ALERTS = os.getenv('DISCORD_TV_WEBHOOK_ALERTS', '')
+
+@app.route('/webhook/tradingview', methods=['POST'])
+@app.route('/webhook/tradingview/<channel>', methods=['POST'])
+def tradingview_webhook(channel='default'):
+    try:
+        body = request.get_data(as_text=True).strip()
+        logger.info(f'TradingView webhook received: {body[:200]}')
+        if not body:
+            return jsonify({'error': 'Empty body'}), 400
+        try:
+            payload = json.loads(body)
+            if 'content' in payload:
+                discord_payload = payload
+            else:
+                discord_payload = {'content': json.dumps(payload, indent=2)}
+        except json.JSONDecodeError:
+            discord_payload = {'content': body}
+        webhook_url = DISCORD_TV_WEBHOOK_ALERTS if channel == 'alerts' else DISCORD_TV_WEBHOOK
+        if not webhook_url:
+            return jsonify({'error': 'Discord webhook URL not configured'}), 500
+        resp = http_requests.post(webhook_url, json=discord_payload, timeout=5)
+        logger.info(f'Discord response: {resp.status_code}')
+        return jsonify({'success': True, 'discord_status': resp.status_code}), 200
+    except Exception as e:
+        logger.error(f'TradingView webhook error: {e}')
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/webhook/tradingview/test', methods=['GET'])
+def tradingview_test():
+    return jsonify({'status': 'ready', 'discord_configured': bool(DISCORD_TV_WEBHOOK)}), 200
