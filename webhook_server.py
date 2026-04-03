@@ -12,6 +12,7 @@ from typing import Dict, List, Optional, Tuple
 from flask import Flask, request, jsonify
 from supabase import create_client, Client
 from dotenv import load_dotenv
+import requests as http_requests
 
 # Load environment variables
 load_dotenv()
