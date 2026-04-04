@@ -304,38 +304,56 @@ def get_recent_alerts():
 # ============================================
 # TradingView Webhook to Discord Relay
 # ============================================
-DISCORD_TV_WEBHOOK = os.getenv("DISCORD_TV_WEBHOOK", "")
-DISCORD_TV_WEBHOOK_ALERTS = os.getenv("DISCORD_TV_WEBHOOK_ALERTS", "")
+# Load all Discord webhook routes from env vars matching DISCORD_WEBHOOK_<AGENT>
+# e.g. DISCORD_WEBHOOK_INDICES_AI -> routes messages with {"agent": "indices_ai"}
+def load_discord_routes():
+    routes = {}
+    for key, value in os.environ.items():
+        if key.startswith("DISCORD_WEBHOOK_") and value:
+            agent = key.replace("DISCORD_WEBHOOK_", "").lower()
+            routes[agent] = value
+    return routes
+
+DISCORD_ROUTES = load_discord_routes()
+logger.info(f"Discord webhook routes loaded: {list(DISCORD_ROUTES.keys())}")
 
 @app.route("/webhook/tradingview", methods=["POST"])
-@app.route("/webhook/tradingview/<channel>", methods=["POST"])
-def tradingview_webhook(channel="default"):
+def tradingview_webhook():
     try:
         body = request.get_data(as_text=True).strip()
-        logger.info(f"TradingView webhook received: {body[:200]}")
+        logger.info(f"TradingView webhook received: {body[:300]}")
         if not body:
             return jsonify({"error": "Empty body"}), 400
         try:
             payload = json.loads(body)
-            if "content" in payload:
-                discord_payload = payload
-            else:
-                discord_payload = {"content": json.dumps(payload, indent=2)}
         except json.JSONDecodeError:
-            discord_payload = {"content": body}
-        webhook_url = DISCORD_TV_WEBHOOK_ALERTS if channel == "alerts" else DISCORD_TV_WEBHOOK
+            # Plain text — send to default
+            payload = {"content": body}
+
+        # Route by "agent" field in payload, fall back to "default"
+        agent = payload.get("agent", "default").lower()
+        webhook_url = DISCORD_ROUTES.get(agent)
         if not webhook_url:
-            return jsonify({"error": "Discord webhook URL not configured"}), 500
+            available = list(DISCORD_ROUTES.keys())
+            logger.warning(f"No route for agent '{agent}'. Available: {available}")
+            return jsonify({"error": f"No webhook configured for agent '{agent}'", "available_agents": available}), 400
+
+        # Build Discord message from "content" field
+        content = payload.get("content", json.dumps(payload, indent=2))
+        discord_payload = {"content": content}
+        if payload.get("username"):
+            discord_payload["username"] = payload["username"]
+
         resp = http_requests.post(webhook_url, json=discord_payload, timeout=5)
-        logger.info(f"Discord response: {resp.status_code}")
-        return jsonify({"success": True, "discord_status": resp.status_code}), 200
+        logger.info(f"Discord response for agent '{agent}': {resp.status_code}")
+        return jsonify({"success": True, "agent": agent, "discord_status": resp.status_code}), 200
     except Exception as e:
         logger.error(f"TradingView webhook error: {e}")
         return jsonify({"error": str(e)}), 500
 
 @app.route("/webhook/tradingview/test", methods=["GET"])
 def tradingview_test():
-    return jsonify({"status": "ready", "discord_configured": bool(DISCORD_TV_WEBHOOK)}), 200
+    return jsonify({"status": "ready", "agents": list(DISCORD_ROUTES.keys())}), 200
 
 if __name__ == '__main__':
     logger.info("Starting ChartInk Webhook Server...")
