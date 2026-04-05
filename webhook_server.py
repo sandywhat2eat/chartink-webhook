@@ -304,18 +304,78 @@ def get_recent_alerts():
 # ============================================
 # TradingView Webhook to Discord Relay
 # ============================================
-# Load all Discord webhook routes from env vars matching DISCORD_WEBHOOK_<AGENT>
-# e.g. DISCORD_WEBHOOK_INDICES_AI -> routes messages with {"agent": "indices_ai"}
-def load_discord_routes():
-    routes = {}
-    for key, value in os.environ.items():
-        if key.startswith("DISCORD_WEBHOOK_") and value:
-            agent = key.replace("DISCORD_WEBHOOK_", "").lower()
-            routes[agent] = value
-    return routes
+# Dynamically routes to Discord webhooks based on strategy in controls table
+# Payload should contain "strategy" field (e.g., "INDEX_FUTURES_MANAGER", "trade_ai")
 
-DISCORD_ROUTES = load_discord_routes()
-logger.info(f"Discord webhook routes loaded: {list(DISCORD_ROUTES.keys())}")
+# Cache for webhook lookups (refreshed on miss)
+_webhook_cache = {}
+_cache_timestamp = None
+CACHE_TTL_SECONDS = 300  # 5 minutes
+
+def get_webhook_for_strategy(strategy: str) -> Optional[str]:
+    """
+    Look up discord_webhook_url from controls table by strategy.
+    Supports multiple matching patterns:
+    - Exact match: "INDEX_FUTURES_MANAGER"
+    - Case-insensitive: "index_futures_manager"
+    - Partial match for _ai suffix: "trade_ai" matches strategies containing "TRADE" or "LONG" or "SHORT"
+    """
+    global _webhook_cache, _cache_timestamp
+    import time
+
+    now = time.time()
+
+    # Refresh cache if stale
+    if _cache_timestamp is None or (now - _cache_timestamp) > CACHE_TTL_SECONDS:
+        try:
+            result = supabase.table('controls')\
+                .select('strategy, discord_webhook_url')\
+                .not_.is_('discord_webhook_url', 'null')\
+                .execute()
+
+            _webhook_cache = {row['strategy'].upper(): row['discord_webhook_url'] for row in result.data}
+            _cache_timestamp = now
+            logger.info(f"Webhook cache refreshed: {len(_webhook_cache)} strategies")
+        except Exception as e:
+            logger.error(f"Failed to refresh webhook cache: {e}")
+            # Continue with stale cache if available
+
+    strategy_upper = strategy.upper().replace("-", "_")
+
+    # 1. Exact match
+    if strategy_upper in _webhook_cache:
+        return _webhook_cache[strategy_upper]
+
+    # 2. Handle *_ai suffixes - map to specific strategies
+    ai_mappings = {
+        'TRADE_AI': ['LONG_AGENT', 'SHORT_AGENT', 'FUND_MANAGER'],
+        'EQUITY_AI': ['EQUITY_FUND_MANAGER', 'CHIEF_PORTFOLIO_MANAGER'],
+        'FUTURES_AI': ['FUTURES_MANAGER', 'FUTURES_FUND_MANAGER'],
+        'OPTIONS_AI': ['OPTIONS_MANAGER'],
+        'INDICES_AI': ['INDEX_FUTURES_MANAGER'],
+        'COMMODITIES_AI': ['COMMODITIES_MANAGER'],
+        'SOROS_AI': ['SOROS_MANAGING_PARTNER'],
+        'CIO_AI': ['CIO'],
+    }
+
+    if strategy_upper in ai_mappings:
+        for mapped_strategy in ai_mappings[strategy_upper]:
+            if mapped_strategy in _webhook_cache:
+                return _webhook_cache[mapped_strategy]
+
+    # 3. Partial match (find first strategy containing the search term)
+    for cached_strategy, webhook_url in _webhook_cache.items():
+        if strategy_upper in cached_strategy or cached_strategy in strategy_upper:
+            return webhook_url
+
+    return None
+
+def get_available_strategies() -> List[str]:
+    """Return list of strategies that have webhooks configured"""
+    global _webhook_cache
+    if not _webhook_cache:
+        get_webhook_for_strategy("_refresh_cache_")  # Force cache load
+    return sorted(_webhook_cache.keys())
 
 @app.route("/webhook/tradingview", methods=["POST"])
 def tradingview_webhook():
@@ -327,16 +387,21 @@ def tradingview_webhook():
         try:
             payload = json.loads(body)
         except json.JSONDecodeError:
-            # Plain text — send to default
-            payload = {"content": body}
+            # Plain text — send to default (CIO channel)
+            payload = {"content": body, "strategy": "CIO"}
 
-        # Route by "agent" field in payload, fall back to "default"
-        agent = payload.get("agent", "default").lower()
-        webhook_url = DISCORD_ROUTES.get(agent)
+        # Route by "strategy" or "agent" field in payload
+        strategy = payload.get("strategy") or payload.get("agent") or "CIO"
+        webhook_url = get_webhook_for_strategy(strategy)
+
         if not webhook_url:
-            available = list(DISCORD_ROUTES.keys())
-            logger.warning(f"No route for agent '{agent}'. Available: {available}")
-            return jsonify({"error": f"No webhook configured for agent '{agent}'", "available_agents": available}), 400
+            available = get_available_strategies()
+            logger.warning(f"No webhook for strategy '{strategy}'. Available: {available[:20]}...")
+            return jsonify({
+                "error": f"No webhook configured for strategy '{strategy}'",
+                "available_strategies": available[:30],
+                "hint": "Use strategy names from controls table or shortcuts like 'trade_ai', 'equity_ai'"
+            }), 400
 
         # Build Discord message from "content" field
         content = payload.get("content", json.dumps(payload, indent=2))
@@ -345,15 +410,22 @@ def tradingview_webhook():
             discord_payload["username"] = payload["username"]
 
         resp = http_requests.post(webhook_url, json=discord_payload, timeout=5)
-        logger.info(f"Discord response for agent '{agent}': {resp.status_code}")
-        return jsonify({"success": True, "agent": agent, "discord_status": resp.status_code}), 200
+        logger.info(f"Discord response for strategy '{strategy}': {resp.status_code}")
+        return jsonify({"success": True, "strategy": strategy, "discord_status": resp.status_code}), 200
     except Exception as e:
         logger.error(f"TradingView webhook error: {e}")
         return jsonify({"error": str(e)}), 500
 
 @app.route("/webhook/tradingview/test", methods=["GET"])
 def tradingview_test():
-    return jsonify({"status": "ready", "agents": list(DISCORD_ROUTES.keys())}), 200
+    """Test endpoint showing available strategies"""
+    available = get_available_strategies()
+    return jsonify({
+        "status": "ready",
+        "strategies_with_webhooks": len(available),
+        "sample_strategies": available[:20],
+        "shortcuts": ["trade_ai", "equity_ai", "futures_ai", "options_ai", "indices_ai", "commodities_ai", "soros_ai", "cio_ai"]
+    }), 200
 
 if __name__ == '__main__':
     logger.info("Starting ChartInk Webhook Server...")
