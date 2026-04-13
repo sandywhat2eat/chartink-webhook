@@ -27,6 +27,30 @@ Flask app (`webhook_server.py`) that relays third-party webhooks to Discord chan
 5. Posts `{content, username: "Citadel"}` to the `BUILDER_INFRA` Discord webhook URL pulled from `controls`.
 6. Returns JSON with `discord_status` and a `summary` of extracted fields.
 
+### Plan Status map (webhook_server.py:475, :486)
+
+The `Plan Status` select value picks an emoji from `PLAN_STATUS_EMOJI` and a hint line from `PLAN_STATUS_HINT`. Eight statuses, split into two classes:
+
+**USER TRIGGER — agent must act:**
+
+| Status | Emoji | Hint |
+|---|---|---|
+| `Awaiting Plan` | 📥 | Start build mode NOW: read page, run intake, decide meeting vs solo, plan. |
+| `Needs Re-Plan` | 🔁 | Read page edits, reconvene meeting (or solo re-think), post v2 plan, set back to Plan Posted. |
+| `User Approved` | ✅ | Read final plan, create Build Tasks rows, dispatch to builders, set Plan Status = Building, then EXECUTE end-to-end until Shipped. |
+| `Rejected` | ❌ | Close out, log to memory, no further build work. |
+
+**Echo — agent's own status updates bouncing back, NO ACTION:**
+
+| Status | Emoji | Hint |
+|---|---|---|
+| `In Meeting` | 💬 | Your own status update echoing back. NO ACTION. |
+| `Plan Posted` | 📋 | Your own status update echoing back. NO ACTION. |
+| `Building` | 🔨 | Your own status update echoing back. NO ACTION. |
+| `Shipped` | 🚀 | Your own status update echoing back. NO ACTION. |
+
+The hint text is a static per-status template — the Notion payload only decides *which* template fires, not the wording. Unknown statuses fall back to `📋` + `Read citadel-product-management.md and act per status.`
+
 **Failure modes** (logged + returned):
 - Invalid JSON -> 400
 - Missing `properties` -> 200 with `ignored` (treated as no-op so Notion doesn't retry-storm)
