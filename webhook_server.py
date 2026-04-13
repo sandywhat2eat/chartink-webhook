@@ -484,14 +484,14 @@ PLAN_STATUS_EMOJI = {
 }
 
 PLAN_STATUS_HINT = {
-    'Awaiting Plan': 'Wait for explicit user invoke before starting intake.',
-    'In Meeting': 'Meeting in progress. No external action needed.',
-    'Plan Posted': 'Plan ready for user review. Stop and wait for next signal.',
-    'Needs Re-Plan': 'Read the page edits and reconvene the build meeting in the same Discord thread.',
-    'User Approved': 'Read final plan, create Build Tasks rows, dispatch each to its builder, set Plan Status = Building.',
-    'Building': 'Builders executing. Track via Build Tasks DB; flip to Shipped when all rows are Done.',
-    'Shipped': 'All tasks complete. Fill Outcome section, set Roadmap Status = Done, post Discord summary.',
-    'Rejected': 'Close out, log to memory, no further action.',
+    'Awaiting Plan': 'USER TRIGGER. Start build mode NOW: read page, run intake, decide meeting vs solo, plan.',
+    'In Meeting': 'Your own status update echoing back. NO ACTION.',
+    'Plan Posted': 'Your own status update echoing back. NO ACTION.',
+    'Needs Re-Plan': 'USER TRIGGER. Read page edits, reconvene meeting (or solo re-think), post v2 plan, set back to Plan Posted.',
+    'User Approved': 'USER TRIGGER. Read final plan, create Build Tasks rows, dispatch to builders, set Plan Status = Building, then EXECUTE end-to-end until Shipped.',
+    'Building': 'Your own status update echoing back. NO ACTION.',
+    'Shipped': 'Your own status update echoing back. NO ACTION.',
+    'Rejected': 'USER TRIGGER. Close out, log to memory, no further build work.',
 }
 
 
