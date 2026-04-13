@@ -427,6 +427,214 @@ def tradingview_test():
         "shortcuts": ["trade_ai", "equity_ai", "futures_ai", "options_ai", "indices_ai", "commodities_ai", "soros_ai", "cio_ai"]
     }), 200
 
+
+# ============================================
+# Notion -> Discord Bridge (Citadel Roadmap automations)
+# ============================================
+# Receives Notion automation webhooks when a Roadmap page property changes.
+# Notion's default automation payload is not Discord-compatible, so this
+# endpoint translates: extract page info -> format human message -> POST to
+# BUILDER_INFRA Discord webhook (looked up from controls table, same pattern
+# as the tradingview relay above).
+
+def _extract_notion_property(props, name, ptype):
+    """Safely extract a value from Notion's property object structure.
+
+    Returns None if the property is missing or malformed. For multi_select
+    returns a list of names. For everything else returns a string or None.
+    """
+    prop = props.get(name) if isinstance(props, dict) else None
+    if not prop:
+        return None
+    try:
+        if ptype == 'title':
+            arr = prop.get('title') or []
+            if arr and isinstance(arr, list):
+                first = arr[0]
+                return first.get('plain_text') or first.get('text', {}).get('content')
+            return None
+        if ptype == 'select':
+            sel = prop.get('select')
+            return sel.get('name') if sel else None
+        if ptype == 'multi_select':
+            ms = prop.get('multi_select') or []
+            return [item.get('name') for item in ms if item.get('name')]
+        if ptype == 'rich_text':
+            rt = prop.get('rich_text') or []
+            if rt and isinstance(rt, list):
+                return ''.join(seg.get('plain_text', '') for seg in rt)
+            return None
+        if ptype == 'url':
+            return prop.get('url')
+    except Exception as e:
+        logger.warning(f"_extract_notion_property failed for {name}/{ptype}: {e}")
+        return None
+    return None
+
+
+PLAN_STATUS_EMOJI = {
+    'Awaiting Plan': '\U0001f4e5',
+    'In Meeting': '\U0001f4ac',
+    'Plan Posted': '\U0001f4cb',
+    'Needs Re-Plan': '\U0001f501',
+    'User Approved': '\u2705',
+    'Building': '\U0001f528',
+    'Shipped': '\U0001f680',
+    'Rejected': '\u274c',
+}
+
+PLAN_STATUS_HINT = {
+    'Awaiting Plan': 'Wait for explicit user invoke before starting intake.',
+    'In Meeting': 'Meeting in progress. No external action needed.',
+    'Plan Posted': 'Plan ready for user review. Stop and wait for next signal.',
+    'Needs Re-Plan': 'Read the page edits and reconvene the build meeting in the same Discord thread.',
+    'User Approved': 'Read final plan, create Build Tasks rows, dispatch each to its builder, set Plan Status = Building.',
+    'Building': 'Builders executing. Track via Build Tasks DB; flip to Shipped when all rows are Done.',
+    'Shipped': 'All tasks complete. Fill Outcome section, set Roadmap Status = Done, post Discord summary.',
+    'Rejected': 'Close out, log to memory, no further action.',
+}
+
+
+def _build_notion_discord_message(page, props):
+    """Compose the Discord message body from a Notion page payload."""
+    page_url = page.get('url') if isinstance(page, dict) else None
+
+    item_title = _extract_notion_property(props, 'Item', 'title') or '(untitled)'
+    plan_status = _extract_notion_property(props, 'Plan Status', 'select') or '(no plan status)'
+    builders = _extract_notion_property(props, 'Builders Involved', 'multi_select') or []
+    suggested = _extract_notion_property(props, 'User Suggested Builders', 'multi_select') or []
+    meeting_required = _extract_notion_property(props, 'Meeting Required', 'select')
+    priority = _extract_notion_property(props, 'Priority', 'select')
+
+    emoji = PLAN_STATUS_EMOJI.get(plan_status, '\U0001f4cb')
+    hint = PLAN_STATUS_HINT.get(plan_status, 'Read citadel-product-management.md and act per status.')
+
+    lines = [
+        f"{emoji} **Citadel Roadmap -> {plan_status}**",
+        f"**Item:** {item_title}",
+    ]
+    if priority:
+        lines.append(f"**Priority:** {priority}")
+    if meeting_required:
+        lines.append(f"**Meeting Required:** {meeting_required}")
+    if suggested:
+        lines.append(f"**User Suggested Builders:** {', '.join(suggested)}")
+    if builders:
+        lines.append(f"**Builders Involved:** {', '.join(builders)}")
+    lines.append(f"**Page:** {page_url or '(no url)'}")
+    lines.append("")
+    lines.append(f"_{hint}_")
+
+    return '\n'.join(lines), {
+        'item': item_title,
+        'plan_status': plan_status,
+        'builders_involved': builders,
+        'meeting_required': meeting_required,
+        'page_url': page_url,
+    }
+
+
+@app.route('/webhook/notion', methods=['POST'])
+def notion_webhook():
+    """Notion automation webhook -> BUILDER_INFRA Discord channel.
+
+    Notion sends a payload describing the changed page. We extract the
+    Citadel Roadmap fields we care about, format a human-readable Discord
+    message, and post to the BUILDER_INFRA webhook (looked up from
+    controls.discord_webhook_url).
+    """
+    try:
+        body = request.get_data(as_text=True).strip()
+        if not body:
+            return jsonify({'error': 'Empty body'}), 400
+        try:
+            payload = json.loads(body)
+        except json.JSONDecodeError as e:
+            logger.error(f"Notion webhook: invalid JSON: {e}")
+            return jsonify({'error': 'Invalid JSON'}), 400
+
+        logger.info(f"Notion webhook received: {json.dumps(payload)[:600]}")
+
+        # Notion webhook shape: top-level may be the page itself OR may wrap
+        # it under "data". Handle both defensively.
+        page = payload.get('data') if isinstance(payload, dict) else None
+        if not isinstance(page, dict) or 'properties' not in page:
+            page = payload  # try treating the whole payload as the page
+
+        props = page.get('properties') if isinstance(page, dict) else {}
+        if not isinstance(props, dict):
+            logger.warning("Notion webhook: no properties found in payload")
+            props = {}
+
+        message, summary = _build_notion_discord_message(page, props)
+
+        webhook_url = get_webhook_for_strategy('BUILDER_INFRA')
+        if not webhook_url:
+            logger.error("Notion webhook: BUILDER_INFRA webhook not configured in controls table")
+            return jsonify({'error': 'BUILDER_INFRA webhook not configured'}), 500
+
+        discord_payload = {'content': message, 'username': 'Citadel'}
+        resp = http_requests.post(webhook_url, json=discord_payload, timeout=5)
+        logger.info(
+            f"Notion -> Discord BUILDER_INFRA: status={resp.status_code} "
+            f"plan_status={summary['plan_status']} item={summary['item']}"
+        )
+
+        if resp.status_code >= 400:
+            logger.error(f"Discord rejected Notion bridge message: {resp.text[:200]}")
+            return jsonify({
+                'success': False,
+                'discord_status': resp.status_code,
+                'discord_response': resp.text[:500],
+                'summary': summary,
+            }), 502
+
+        return jsonify({
+            'success': True,
+            'discord_status': resp.status_code,
+            'summary': summary,
+        }), 200
+
+    except Exception as e:
+        logger.error(f"Notion webhook error: {e}", exc_info=True)
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/webhook/notion/test', methods=['GET'])
+def notion_test():
+    """Sends a sample Citadel notification to BUILDER_INFRA. Use to verify
+    the Discord side of the bridge works without needing Notion to fire.
+    """
+    sample = {
+        'data': {
+            'object': 'page',
+            'id': 'test-page-id',
+            'url': 'https://www.notion.so/test-page',
+            'properties': {
+                'Item': {'type': 'title', 'title': [{'plain_text': 'Test - Citadel webhook bridge'}]},
+                'Plan Status': {'type': 'select', 'select': {'name': 'Needs Re-Plan'}},
+                'Builders Involved': {'type': 'multi_select', 'multi_select': [{'name': 'BUILDER_INFRA'}]},
+                'User Suggested Builders': {'type': 'multi_select', 'multi_select': []},
+                'Meeting Required': {'type': 'select', 'select': {'name': 'Yes - force meeting'}},
+                'Priority': {'type': 'select', 'select': {'name': 'P1'}},
+            },
+        }
+    }
+    page = sample['data']
+    props = page['properties']
+    message, summary = _build_notion_discord_message(page, props)
+    webhook_url = get_webhook_for_strategy('BUILDER_INFRA')
+    if not webhook_url:
+        return jsonify({'error': 'BUILDER_INFRA webhook not configured'}), 500
+    resp = http_requests.post(webhook_url, json={'content': message, 'username': 'Citadel'}, timeout=5)
+    return jsonify({
+        'success': resp.status_code < 400,
+        'discord_status': resp.status_code,
+        'summary': summary,
+        'message_preview': message,
+    }), 200
+
+
 if __name__ == '__main__':
     logger.info("Starting ChartInk Webhook Server...")
     logger.info(f"Supabase URL: {SUPABASE_URL}")
