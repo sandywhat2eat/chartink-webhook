@@ -1,10 +1,18 @@
-# ChartInk Webhook Alert Integration
+# 📊 ChartInk Webhook Alert Integration
 
-Complete webhook server to receive ChartInk alerts and store them in Supabase for analysis and tracking.
+Complete webhook server to receive ChartInk alerts and store them in Supabase for analysis and tracking. Now with Digital Ocean deployment support!
 
-## 🚀 Digital Ocean App Deployment
+## 🚀 Deployment Options
 
-This project is ready for deployment on Digital Ocean App Platform with automatic scaling and HTTPS.
+### 1. Digital Ocean App (Recommended)
+**URL:** `https://starfish-app-khm7p.ondigitalocean.app`
+- ✅ Automatic HTTPS
+- ✅ Auto-scaling
+- ✅ Production-ready
+- ✅ Automatic deployments from GitHub
+
+### 2. Self-Hosted (Manual)
+Run on your own server with Docker or directly via Python.
 
 ## 🚀 Quick Start
 
@@ -21,10 +29,32 @@ cd /root/chartink
 ```
 
 ### 3. Configure ChartInk
-Use this webhook URL in your ChartInk screener:
+Use one of these webhook URLs in your ChartInk screener:
+
+**Digital Ocean (Recommended):**
+```
+https://starfish-app-khm7p.ondigitalocean.app/webhook/chartink
+```
+
+**Self-Hosted:**
 ```
 http://YOUR_SERVER_IP:8082/webhook/chartink
 ```
+
+## 🔄 ChartInk Webhook Format
+
+ChartInk sends alerts in this format:
+```json
+{
+  "scan_name": "Your Scan Name",
+  "scan_url": "scan-identifier",
+  "alert_name": "Your Alert Name",
+  "stocks": "STOCK1,STOCK2,STOCK3",
+  "trigger_prices": "100.5,150.25,200.75"
+}
+```
+
+> **Note:** The webhook now correctly handles both the old format (`STOCK@PRICE,STOCK@PRICE`) and ChartInk's actual format (separate `stocks` and `trigger_prices` fields).
 
 ## 📊 Database Schema
 
@@ -77,7 +107,30 @@ http://YOUR_SERVER_IP:8082/webhook/chartink
 
 ## 🧪 Testing
 
-Run the test suite:
+### 1. Test Webhook (cURL)
+```bash
+curl -X POST https://starfish-app-khm7p.ondigitalocean.app/webhook/chartink \
+  -H "Content-Type: application/json" \
+  -d '{
+    "scan_name": "Test Alert",
+    "scan_url": "test-alert",
+    "alert_name": "My Test Alert",
+    "stocks": "RELIANCE,TCS,INFY",
+    "trigger_prices": "2500.50,3200.75,1450.25"
+  }'
+```
+
+### 2. Check Recent Alerts
+```bash
+curl https://starfish-app-khm7p.ondigitalocean.app/alerts/recent
+```
+
+### 3. Health Check
+```bash
+curl https://starfish-app-khm7p.ondigitalocean.app/health
+```
+
+### 4. Local Test Suite
 ```bash
 cd /root/chartink
 python3 test_webhook.py
@@ -85,16 +138,45 @@ python3 test_webhook.py
 
 Tests include:
 - ✅ Health check
-- ✅ Sample webhook processing
-- ✅ Built-in test endpoint
+- ✅ Webhook processing (both formats)
 - ✅ Recent alerts retrieval
 - ✅ Invalid payload handling
 
 ## 🔧 Configuration
 
-The server uses environment variables from `/root/.env`:
-- `SUPABASE_URL`
-- `SUPABASE_SERVICE_ROLE_KEY`
+### Environment Variables
+Create a `.env` file or set in Digital Ocean dashboard:
+```
+SUPABASE_URL=your_supabase_url
+SUPABASE_SERVICE_ROLE_KEY=your_service_role_key
+PORT=8080  # For Digital Ocean, use 8080
+LOG_LEVEL=INFO  # DEBUG, INFO, WARNING, ERROR
+```
+
+### Digital Ocean App Spec
+- **Build Command:** `pip install -r requirements.txt`
+- **Run Command:** `gunicorn --worker-tmp-dir /dev/shm --workers 2 --threads 4 --worker-class=gthread --worker-tmp-dir /dev/shm --bind :8080 webhook_server:app`
+- **HTTP Port:** 8080
+- **Health Check Path:** `/health`
+
+## 🚀 Deployment Workflow
+
+1. **Push to GitHub**
+   ```bash
+   git add .
+   git commit -m "Your update message"
+   git push origin main
+   ```
+
+2. **Digital Ocean**
+   - Auto-detects GitHub changes
+   - Builds and deploys automatically
+   - Updates live in 2-5 minutes
+
+3. **Verify Deployment**
+   ```bash
+   curl https://starfish-app-khm7p.ondigitalocean.app/health
+   ```
 
 ## 📈 Data Processing Logic
 

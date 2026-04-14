@@ -8,7 +8,7 @@ from supabase import create_client, Client
 from dotenv import load_dotenv
 
 # Load environment variables
-load_dotenv()
+load_dotenv('/root/.env')
 
 # Initialize Supabase client
 SUPABASE_URL = os.getenv('SUPABASE_URL')

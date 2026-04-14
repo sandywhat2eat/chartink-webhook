@@ -484,11 +484,11 @@ PLAN_STATUS_EMOJI = {
 }
 
 PLAN_STATUS_HINT = {
-    'Awaiting Plan': 'USER TRIGGER. Start build mode NOW: read page, run intake, decide meeting vs solo, plan.',
+    'Awaiting Plan': 'USER TRIGGER. Run Skill("meeting", "build <page-url>") to plan. Use Skill("notion-ops") for all Notion API calls.',
     'In Meeting': 'Your own status update echoing back. NO ACTION.',
     'Plan Posted': 'Your own status update echoing back. NO ACTION.',
-    'Needs Re-Plan': 'USER TRIGGER. Read page edits, reconvene meeting (or solo re-think), post v2 plan, set back to Plan Posted.',
-    'User Approved': 'USER TRIGGER. Read final plan, create Build Tasks rows, dispatch to builders, set Plan Status = Building, then EXECUTE end-to-end until Shipped.',
+    'Needs Re-Plan': 'USER TRIGGER. Read page edits. Reconvene meeting if multi-builder, solo re-think if single builder. Post v2 plan, set back to Plan Posted.',
+    'User Approved': 'USER TRIGGER. Plan is done — skip meeting. Read final plan from page, create Build Tasks rows, dispatch builders, set Building, execute until Shipped.',
     'Building': 'Your own status update echoing back. NO ACTION.',
     'Shipped': 'Your own status update echoing back. NO ACTION.',
     'Rejected': 'USER TRIGGER. Close out, log to memory, no further build work.',
