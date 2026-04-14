@@ -558,6 +558,8 @@ def _build_notion_discord_message(page, props):
     meeting_required = _extract_notion_property(props, 'Meeting Required', 'select')
     priority = _extract_notion_property(props, 'Priority', 'select')
     parent_ids = _extract_notion_property(props, 'Parent Item', 'relation') or []
+    user_comments = _extract_notion_property(props, 'User Comments', 'rich_text')
+    requirement = _extract_notion_property(props, 'Requirement', 'rich_text')
 
     emoji = PLAN_STATUS_EMOJI.get(plan_status, '\U0001f4cb')
     hint = PLAN_STATUS_HINT.get(plan_status, 'Read citadel-product-management.md and act per status.')
@@ -575,6 +577,12 @@ def _build_notion_discord_message(page, props):
     if builders:
         lines.append(f"**Builders Involved:** {', '.join(builders)}")
     lines.append(f"**Page:** {page_url or '(no url)'}")
+    if user_comments:
+        lines.append("")
+        lines.append(f"\U0001f4ac **User Comments:** {user_comments}")
+    if requirement and requirement != user_comments:
+        lines.append("")
+        lines.append(f"**Requirement:** {requirement}")
 
     # Parent Item — this is a follow-up to an earlier item (bug / enhancement)
     if parent_ids:
