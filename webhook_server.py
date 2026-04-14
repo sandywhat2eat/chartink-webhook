@@ -466,10 +466,62 @@ def _extract_notion_property(props, name, ptype):
             return None
         if ptype == 'url':
             return prop.get('url')
+        if ptype == 'relation':
+            rel = prop.get('relation') or []
+            return [item.get('id') for item in rel if item.get('id')]
     except Exception as e:
         logger.warning(f"_extract_notion_property failed for {name}/{ptype}: {e}")
         return None
     return None
+
+
+_notion_page_cache = {}
+_NOTION_CACHE_TTL = 600
+
+
+def _fetch_notion_page_title(page_id):
+    """Best-effort fetch of a Notion page's title. Returns (title, url).
+    Cached for 10 minutes. Silent on failure — the webhook must stay fast.
+    """
+    if not page_id:
+        return None, None
+
+    import time
+    now = time.time()
+    cached = _notion_page_cache.get(page_id)
+    if cached and (now - cached[0]) < _NOTION_CACHE_TTL:
+        return cached[1], cached[2]
+
+    fallback_url = f"https://www.notion.so/{page_id.replace('-', '')}"
+    token = os.getenv('NOTION_TOKEN')
+    if not token:
+        return None, fallback_url
+
+    try:
+        resp = http_requests.get(
+            f"https://api.notion.com/v1/pages/{page_id}",
+            headers={
+                'Authorization': f"Bearer {token}",
+                'Notion-Version': '2022-06-28',
+            },
+            timeout=1.5,
+        )
+        if resp.status_code != 200:
+            return None, fallback_url
+        data = resp.json()
+        url = data.get('url') or fallback_url
+        title = None
+        for prop in (data.get('properties') or {}).values():
+            if prop.get('type') == 'title':
+                arr = prop.get('title') or []
+                if arr:
+                    title = arr[0].get('plain_text')
+                break
+        _notion_page_cache[page_id] = (now, title, url)
+        return title, url
+    except Exception as e:
+        logger.warning(f"_fetch_notion_page_title failed for {page_id}: {e}")
+        return None, fallback_url
 
 
 PLAN_STATUS_EMOJI = {
@@ -505,6 +557,7 @@ def _build_notion_discord_message(page, props):
     suggested = _extract_notion_property(props, 'User Suggested Builders', 'multi_select') or []
     meeting_required = _extract_notion_property(props, 'Meeting Required', 'select')
     priority = _extract_notion_property(props, 'Priority', 'select')
+    parent_ids = _extract_notion_property(props, 'Parent Item', 'relation') or []
 
     emoji = PLAN_STATUS_EMOJI.get(plan_status, '\U0001f4cb')
     hint = PLAN_STATUS_HINT.get(plan_status, 'Read citadel-product-management.md and act per status.')
@@ -522,6 +575,16 @@ def _build_notion_discord_message(page, props):
     if builders:
         lines.append(f"**Builders Involved:** {', '.join(builders)}")
     lines.append(f"**Page:** {page_url or '(no url)'}")
+
+    # Parent Item — this is a follow-up to an earlier item (bug / enhancement)
+    if parent_ids:
+        parent_id = parent_ids[0]
+        parent_title, parent_url = _fetch_notion_page_title(parent_id)
+        display = parent_title or parent_id
+        lines.append("")
+        lines.append(f"\U0001f517 **Follow-up to:** [{display}]({parent_url})")
+        lines.append("**Before planning:** read the parent's Outcome section + Build Docs. Scope this relative to what already shipped — don't re-architect.")
+
     lines.append("")
     lines.append(f"_{hint}_")
 
