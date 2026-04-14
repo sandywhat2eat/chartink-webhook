@@ -24,8 +24,19 @@ Flask app (`webhook_server.py`) that relays third-party webhooks to Discord chan
    - `Builders Involved` (multi_select)
    - `User Suggested Builders` (multi_select)
 4. `_build_notion_discord_message` composes a markdown message: status header, item, priority, meeting flag, builders, page URL, and a status-specific hint pointing the agent at `citadel-product-management.md`.
-5. Posts `{content, username: "Citadel"}` to the `BUILDER_INFRA` Discord webhook URL pulled from `controls`.
-6. Returns JSON with `discord_status` and a `summary` of extracted fields.
+5. **Routes by `Builders Involved`** (see table below), resolves the channel via `get_webhook_for_strategy()` against the `controls` table, and posts `{content, username: "Citadel"}`.
+6. Returns JSON with `routed_to`, `discord_status`, and a `summary` of extracted fields.
+
+### Routing by Builders Involved
+
+| # of builders | Target channel |
+|---|---|
+| 0 (empty / missing) | `BUILDER_INFRA` (default) |
+| 1 | that builder's channel (e.g. `BUILDER_EQUITY`) |
+| 2+ | `BUILDER_INFRA` (cross-team coordination) |
+| Unknown builder name (no webhook row) | `BUILDER_INFRA` (fallback, warning logged) |
+
+Builder names from Notion are upper-cased and `-`/space → `_` normalized before the `controls` lookup. Available builder channels: `BUILDER_AGENT`, `BUILDER_ANALYSTS`, `BUILDER_CIO`, `BUILDER_COMMODITIES`, `BUILDER_EQUITY`, `BUILDER_FUTURES`, `BUILDER_INFRA`, `BUILDER_OPTIONS`, `BUILDER_TRADE`.
 
 ### Plan Status map (webhook_server.py:475, :486)
 

@@ -568,22 +568,41 @@ def notion_webhook():
 
         message, summary = _build_notion_discord_message(page, props)
 
-        webhook_url = get_webhook_for_strategy('BUILDER_INFRA')
+        # Route by Builders Involved:
+        #   0 builders -> BUILDER_INFRA
+        #   1 builder  -> that builder's channel (if webhook exists)
+        #   2+ builders -> BUILDER_INFRA (cross-team coordination)
+        builders = summary.get('builders_involved') or []
+        if len(builders) == 1:
+            target_strategy = builders[0].strip().upper().replace('-', '_').replace(' ', '_')
+            webhook_url = get_webhook_for_strategy(target_strategy)
+            if not webhook_url:
+                logger.warning(
+                    f"Notion webhook: unknown builder '{builders[0]}', falling back to BUILDER_INFRA"
+                )
+                target_strategy = 'BUILDER_INFRA'
+                webhook_url = get_webhook_for_strategy('BUILDER_INFRA')
+        else:
+            target_strategy = 'BUILDER_INFRA'
+            webhook_url = get_webhook_for_strategy('BUILDER_INFRA')
+
         if not webhook_url:
-            logger.error("Notion webhook: BUILDER_INFRA webhook not configured in controls table")
-            return jsonify({'error': 'BUILDER_INFRA webhook not configured'}), 500
+            logger.error(f"Notion webhook: {target_strategy} webhook not configured in controls table")
+            return jsonify({'error': f'{target_strategy} webhook not configured'}), 500
 
         discord_payload = {'content': message, 'username': 'Citadel'}
         resp = http_requests.post(webhook_url, json=discord_payload, timeout=5)
         logger.info(
-            f"Notion -> Discord BUILDER_INFRA: status={resp.status_code} "
-            f"plan_status={summary['plan_status']} item={summary['item']}"
+            f"Notion -> Discord {target_strategy}: status={resp.status_code} "
+            f"plan_status={summary['plan_status']} item={summary['item']} "
+            f"builders={builders}"
         )
 
         if resp.status_code >= 400:
             logger.error(f"Discord rejected Notion bridge message: {resp.text[:200]}")
             return jsonify({
                 'success': False,
+                'routed_to': target_strategy,
                 'discord_status': resp.status_code,
                 'discord_response': resp.text[:500],
                 'summary': summary,
@@ -591,6 +610,7 @@ def notion_webhook():
 
         return jsonify({
             'success': True,
+            'routed_to': target_strategy,
             'discord_status': resp.status_code,
             'summary': summary,
         }), 200
