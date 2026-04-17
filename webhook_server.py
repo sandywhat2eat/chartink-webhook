@@ -469,6 +469,13 @@ def _extract_notion_property(props, name, ptype):
         if ptype == 'relation':
             rel = prop.get('relation') or []
             return [item.get('id') for item in rel if item.get('id')]
+        if ptype == 'unique_id':
+            uid = prop.get('unique_id') or {}
+            prefix = uid.get('prefix')
+            number = uid.get('number')
+            if number is None:
+                return None
+            return f"{prefix}-{number}" if prefix else str(number)
     except Exception as e:
         logger.warning(f"_extract_notion_property failed for {name}/{ptype}: {e}")
         return None
@@ -552,6 +559,7 @@ def _build_notion_discord_message(page, props):
     page_url = page.get('url') if isinstance(page, dict) else None
 
     item_title = _extract_notion_property(props, 'Item', 'title') or '(untitled)'
+    item_id = _extract_notion_property(props, 'Item ID', 'unique_id')
     plan_status = _extract_notion_property(props, 'Plan Status', 'select') or '(no plan status)'
     builders = _extract_notion_property(props, 'Builders Involved', 'multi_select') or []
     suggested = _extract_notion_property(props, 'User Suggested Builders', 'multi_select') or []
@@ -564,9 +572,10 @@ def _build_notion_discord_message(page, props):
     emoji = PLAN_STATUS_EMOJI.get(plan_status, '\U0001f4cb')
     hint = PLAN_STATUS_HINT.get(plan_status, 'Read citadel-product-management.md and act per status.')
 
+    item_label = f"{item_id} — {item_title}" if item_id else item_title
     lines = [
         f"{emoji} **Citadel Roadmap -> {plan_status}**",
-        f"**Item:** {item_title}",
+        f"**Item:** {item_label}",
     ]
     if priority:
         lines.append(f"**Priority:** {priority}")
