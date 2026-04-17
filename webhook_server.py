@@ -572,6 +572,16 @@ def _build_notion_discord_message(page, props):
     emoji = PLAN_STATUS_EMOJI.get(plan_status, '\U0001f4cb')
     hint = PLAN_STATUS_HINT.get(plan_status, 'Read citadel-product-management.md and act per status.')
 
+    def _truncate(text, limit):
+        if not text:
+            return text
+        if len(text) <= limit:
+            return text
+        return text[: max(0, limit - 15)].rstrip() + '… [truncated]'
+
+    user_comments = _truncate(user_comments, 400)
+    requirement = _truncate(requirement, 800)
+
     item_label = f"{item_id} — {item_title}" if item_id else item_title
     lines = [
         f"{emoji} **Citadel Roadmap -> {plan_status}**",
@@ -605,7 +615,10 @@ def _build_notion_discord_message(page, props):
     lines.append("")
     lines.append(f"_{hint}_")
 
-    return '\n'.join(lines), {
+    message = '\n'.join(lines)
+    if len(message) > 1950:
+        message = message[:1935].rstrip() + '\n… [truncated]'
+    return message, {
         'item': item_title,
         'plan_status': plan_status,
         'builders_involved': builders,
