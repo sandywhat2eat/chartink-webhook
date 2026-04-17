@@ -6,7 +6,7 @@ services:
   github:
     repo: your-username/chartink-webhook
     branch: main
-  run_command: gunicorn --bind 0.0.0.0:$PORT webhook_server:app
+  run_command: gunicorn --workers 2 --threads 4 --worker-class=gthread --worker-tmp-dir /dev/shm --timeout 30 --access-logfile - --bind 0.0.0.0:$PORT webhook_server:app
   environment_slug: python
   instance_count: 1
   instance_size_slug: basic-xxs
