@@ -536,6 +536,7 @@ PLAN_STATUS_EMOJI = {
     'In Meeting': '\U0001f4ac',
     'Plan Posted': '\U0001f4cb',
     'Needs Re-Plan': '\U0001f501',
+    'Needs Clarification': '\U0001f4ad',
     'User Approved': '\u2705',
     'Building': '\U0001f528',
     'Shipped': '\U0001f680',
@@ -543,14 +544,15 @@ PLAN_STATUS_EMOJI = {
 }
 
 PLAN_STATUS_HINT = {
-    'Awaiting Plan': 'USER TRIGGER. Run Skill("meeting", "build <page-url>") to plan. Use Skill("notion-ops") for all Notion API calls.',
+    'Awaiting Plan': 'USER TRIGGER. Fetch ALL page comments first via mcp__notion__API-retrieve-a-comment (block_id = page id) — treat them as part of the input. Then run Skill("meeting", "build <page-url>") to plan. Use Skill("notion-ops") for all Notion API calls.',
     'In Meeting': 'Your own status update echoing back. NO ACTION.',
     'Plan Posted': 'Your own status update echoing back. NO ACTION.',
-    'Needs Re-Plan': 'USER TRIGGER. Read page edits. Reconvene meeting if multi-builder, solo re-think if single builder. Post v2 plan, set back to Plan Posted.',
-    'User Approved': 'USER TRIGGER. Plan is done — skip meeting. Read final plan from page, create Build Tasks rows, dispatch builders, set Building, execute until Shipped.',
+    'Needs Re-Plan': 'USER TRIGGER. Fetch ALL page comments first via mcp__notion__API-retrieve-a-comment, then read page edits. Full re-plan from scratch — reconvene meeting if multi-builder, solo re-think if single builder. Post v2 plan, set back to Plan Posted.',
+    'Needs Clarification': 'USER TRIGGER. SURGICAL EDIT MODE. Fetch ALL page comments via mcp__notion__API-retrieve-a-comment. Read the EXISTING Plan section of the page. Apply ONLY targeted edits driven by each comment — do NOT rewrite the whole plan, do NOT reconvene a meeting, do NOT re-read intake. Preserve everything not addressed by a comment. Update the page in place. Set Plan Status back to Plan Posted. Reply once in Discord: "Plan updated based on N comments: <URL>".',
+    'User Approved': 'USER TRIGGER. Plan is done — skip meeting. Fetch any final page comments via mcp__notion__API-retrieve-a-comment first. Read final plan from page, create Build Tasks rows, dispatch builders, set Building, execute until Shipped.',
     'Building': 'Your own status update echoing back. NO ACTION.',
     'Shipped': 'Your own status update echoing back. NO ACTION.',
-    'Rejected': 'USER TRIGGER. Close out, log to memory, no further build work.',
+    'Rejected': 'USER TRIGGER. Fetch any closing comments via mcp__notion__API-retrieve-a-comment. Close out, log to memory, no further build work.',
 }
 
 
