@@ -555,7 +555,7 @@ PLAN_STATUS_HINT = {
     'Building': 'Your own status update echoing back. NO ACTION. (Use this status during the brief window of active coding before PR is opened.)',
     'Awaiting PR Review': 'Your own status update echoing back. NO ACTION. The PR is now waiting for the human to review and merge on GitHub.',
     'Peer Review': 'USER TRIGGER. Run Skill("codex-advisor") in code-review mode against the open PR for this Roadmap item. Step 1: gh pr view <num> --json url,headRefName,number to find PR. Step 2: Skill("codex-advisor") with command "code-review" and the PR URL or uncommitted diff. Step 3: Post the review verbatim as a PR comment via gh pr comment <num> --body "<review>". Step 4: Also post a one-line summary as a Notion comment via mcp__notion__API-create-a-comment. Step 5: Flip Plan Status back to Awaiting PR Review. Step 6: Post one Discord line: "🔍 Codex review posted on PR <URL>". You do NOT merge, do NOT iterate on the code yourself — the user reads the review and decides next.',
-    'Shipped': 'Your own status update echoing back. NO ACTION.',
+    'Shipped': 'Your own status update echoing back. NO ACTION. (Reminder: Outcome MUST be populated on the page body before this flip — if you flipped Shipped without an Outcome, that\'s a process violation. See citadel-product-management.md "Outcome — The Mandatory Closing Note".)',
     'Rejected': 'USER TRIGGER. Fetch any closing comments via mcp__notion__API-retrieve-a-comment. If a PR is open for this item, close it via gh pr close <num> --delete-branch --comment "Rejected per Notion <URL>". Log rejection in memory, no further build work.',
 }
 
