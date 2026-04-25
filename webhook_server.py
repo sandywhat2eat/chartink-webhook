@@ -539,6 +539,8 @@ PLAN_STATUS_EMOJI = {
     'Needs Clarification': '\U0001f4ad',
     'User Approved': '\u2705',
     'Building': '\U0001f528',
+    'Awaiting PR Review': '\U0001f4e6',
+    'Peer Review': '\U0001f50d',
     'Shipped': '\U0001f680',
     'Rejected': '\u274c',
 }
@@ -547,12 +549,14 @@ PLAN_STATUS_HINT = {
     'Awaiting Plan': 'USER TRIGGER. Fetch ALL page comments first via mcp__notion__API-retrieve-a-comment (block_id = page id) — treat them as part of the input. Then run Skill("meeting", "build <page-url>") to plan. Use Skill("notion-ops") for all Notion API calls.',
     'In Meeting': 'Your own status update echoing back. NO ACTION.',
     'Plan Posted': 'Your own status update echoing back. NO ACTION.',
-    'Needs Re-Plan': 'USER TRIGGER. Fetch ALL page comments first via mcp__notion__API-retrieve-a-comment, then read page edits. Full re-plan from scratch — reconvene meeting if multi-builder, solo re-think if single builder. Post v2 plan, set back to Plan Posted.',
-    'Needs Clarification': 'USER TRIGGER. SURGICAL EDIT MODE. Fetch ALL page comments via mcp__notion__API-retrieve-a-comment. Read the EXISTING Plan section of the page. Apply ONLY targeted edits driven by each comment — do NOT rewrite the whole plan, do NOT reconvene a meeting, do NOT re-read intake. Preserve everything not addressed by a comment. Update the page in place. Set Plan Status back to Plan Posted. Reply once in Discord: "Plan updated based on N comments: <URL>".',
-    'User Approved': 'USER TRIGGER. Plan is done — skip meeting. Fetch any final page comments via mcp__notion__API-retrieve-a-comment first. Read final plan from page, create Build Tasks rows, dispatch builders, set Building, execute until Shipped.',
-    'Building': 'Your own status update echoing back. NO ACTION.',
+    'Needs Re-Plan': 'USER TRIGGER. ITERATE ON SAME PR/BRANCH (do NOT open a new PR). Read citadel-product-management.md "PR Flow" section. Step 1: Fetch ALL page comments via mcp__notion__API-retrieve-a-comment AND PR review comments via gh pr view --json comments,reviews. Step 2: Read page edits. Step 3: Full re-think on the existing branch — checkout the same feat/<item-id>-* branch, push new commits with the revised approach. Step 4: Update the PR body if scope shifted. Step 5: Flip Plan Status back to Awaiting PR Review.',
+    'Needs Clarification': 'USER TRIGGER. SURGICAL EDIT MODE — same PR/branch. Step 1: Fetch ALL page comments via mcp__notion__API-retrieve-a-comment AND PR review comments via gh pr view --json comments,reviews. Step 2: Read the EXISTING Plan section + the existing branch state. Step 3: Apply ONLY targeted edits driven by each comment — push them to the same branch (no new PR, no rewrite). Preserve everything no comment addresses. Step 4: Flip Plan Status back to Awaiting PR Review.',
+    'User Approved': 'USER TRIGGER. PR FLOW BEGINS — read citadel-product-management.md "PR Flow" section in full. Step 1: Fetch any final page comments via mcp__notion__API-retrieve-a-comment. Step 2: git checkout main && git pull. Step 3: git checkout -b feat/<item-id>-<short-slug>. Step 4: Read final plan from page, create Build Tasks rows, execute the work, write Build Doc, commit with Roadmap: <URL> trailer. Step 5: git push origin <branch> && gh pr create. Step 6: Update Notion: Plan Status = Awaiting PR Review, Build Docs = PR URL. Step 7: Post one line in Discord with PR URL. STOP — do NOT merge, do NOT restart services.',
+    'Building': 'Your own status update echoing back. NO ACTION. (Use this status during the brief window of active coding before PR is opened.)',
+    'Awaiting PR Review': 'Your own status update echoing back. NO ACTION. The PR is now waiting for the human to review and merge on GitHub.',
+    'Peer Review': 'USER TRIGGER. Run Skill("codex-advisor") in code-review mode against the open PR for this Roadmap item. Step 1: gh pr view <num> --json url,headRefName,number to find PR. Step 2: Skill("codex-advisor") with command "code-review" and the PR URL or uncommitted diff. Step 3: Post the review verbatim as a PR comment via gh pr comment <num> --body "<review>". Step 4: Also post a one-line summary as a Notion comment via mcp__notion__API-create-a-comment. Step 5: Flip Plan Status back to Awaiting PR Review. Step 6: Post one Discord line: "🔍 Codex review posted on PR <URL>". You do NOT merge, do NOT iterate on the code yourself — the user reads the review and decides next.',
     'Shipped': 'Your own status update echoing back. NO ACTION.',
-    'Rejected': 'USER TRIGGER. Fetch any closing comments via mcp__notion__API-retrieve-a-comment. Close out, log to memory, no further build work.',
+    'Rejected': 'USER TRIGGER. Fetch any closing comments via mcp__notion__API-retrieve-a-comment. If a PR is open for this item, close it via gh pr close <num> --delete-branch --comment "Rejected per Notion <URL>". Log rejection in memory, no further build work.',
 }
 
 
