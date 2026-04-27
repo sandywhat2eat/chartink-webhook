@@ -628,7 +628,6 @@ def _build_notion_discord_message(page, props):
         'item': item_title,
         'plan_status': plan_status,
         'builders_involved': builders,
-        'user_suggested_builders': suggested,
         'meeting_required': meeting_required,
         'page_url': page_url,
     }
@@ -668,35 +667,22 @@ def notion_webhook():
 
         message, summary = _build_notion_discord_message(page, props)
 
-        # Routing precedence (user-explicit beats inferred):
-        #   1. User Suggested Builders (first entry) — user explicitly named a builder, route directly
-        #   2. Builders Involved (if exactly 1) — single-owner build, route to them
-        #   3. BUILDER_INFRA — fallback (no builders set, or 2+ builders without user suggestion = cross-team coordination)
-        suggested = summary.get('user_suggested_builders') or []
+        # Route by Builders Involved:
+        #   0 builders -> BUILDER_INFRA
+        #   1 builder  -> that builder's channel (if webhook exists)
+        #   2+ builders -> BUILDER_INFRA (cross-team coordination)
         builders = summary.get('builders_involved') or []
-        target_builder = None
-        routing_reason = None
-
-        if suggested:
-            target_builder = suggested[0]
-            routing_reason = f"user_suggested[0] (of {len(suggested)})"
-        elif len(builders) == 1:
-            target_builder = builders[0]
-            routing_reason = "builders_involved (single)"
-
-        if target_builder:
-            target_strategy = target_builder.strip().upper().replace('-', '_').replace(' ', '_')
+        if len(builders) == 1:
+            target_strategy = builders[0].strip().upper().replace('-', '_').replace(' ', '_')
             webhook_url = get_webhook_for_strategy(target_strategy)
             if not webhook_url:
                 logger.warning(
-                    f"Notion webhook: unknown builder '{target_builder}' (via {routing_reason}), falling back to BUILDER_INFRA"
+                    f"Notion webhook: unknown builder '{builders[0]}', falling back to BUILDER_INFRA"
                 )
                 target_strategy = 'BUILDER_INFRA'
-                routing_reason = f"fallback (unknown builder '{target_builder}')"
                 webhook_url = get_webhook_for_strategy('BUILDER_INFRA')
         else:
             target_strategy = 'BUILDER_INFRA'
-            routing_reason = "default (no suggested, 0 or 2+ builders_involved)"
             webhook_url = get_webhook_for_strategy('BUILDER_INFRA')
 
         if not webhook_url:
@@ -708,7 +694,7 @@ def notion_webhook():
         logger.info(
             f"Notion -> Discord {target_strategy}: status={resp.status_code} "
             f"plan_status={summary['plan_status']} item={summary['item']} "
-            f"suggested={suggested} builders={builders} reason={routing_reason}"
+            f"builders={builders}"
         )
 
         if resp.status_code >= 400:
